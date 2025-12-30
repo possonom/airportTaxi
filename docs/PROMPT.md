@@ -1,34 +1,41 @@
-# PROMT
+# PROMPT
+
+Got it — **.NET Aspire**. Here’s the **complete Codex prompt** updated to use **.NET 10 + FastEndpoints + DDD/CQRS + Outbox + Behaviors + Permissions**, with **migrations as a separate tool**, **two Next.js clients**, **APIR(E)** dev modes, and **a .NET Aspire AppHost** for local orchestration (Postgres, Redis, API, Migrator). It also preserves your rule that DB can be updated **before** backend deploy (Migrator is separate), while Aspire is used for dev orchestration.
+
+Copy/paste:
 
 ```text
-You are Codex acting as a senior software architect + implementer. Build a complete, runnable monorepo for an “Airport Taxi” platform (Africa, starting with Nsimalen International Airport, Yaoundé) using:
+You are a senior software architect + implementer.
 
-- Backend: .NET 10, FastEndpoints (HTTP API), DDD + CQRS
-- Structure per module: /Web for endpoints/contracts, /UseCases for commands/queries/events/handlers
-- Cross-cutting: Behaviors/pipeline (validation, authorization, unit-of-work, outbox, logging)
-- Outbox pattern MUST be implemented for reliable event publication
-- OutboxMessages MUST include the identity of the user who triggered the change (actor) for later use
-- Command-level permission checks using predefined permissions
-- Auth: External OIDC provider (registration/login handled externally)
-- Local membership: ASP.NET Core Identity (auto-provision user on first login)
-- Roles: stored locally and managed in admin UI; API maps DB roles to authorization/claims
-- DB: PostgreSQL (EF Core)
-- Cache: Redis (last known driver locations)
+BUILD A COMPLETE RUNNABLE MONOREPO for an “Airport Taxi” platform (Africa; starting with Nsimalen International Airport, Yaoundé) with:
+
+- Backend: .NET 10 + FastEndpoints (HTTP API) + SignalR
+- Architecture: DDD + CQRS
+- Per module folder structure: /Domain, /UseCases, /Web, /Infrastructure
+- Cross-cutting pipeline Behaviors (validation, permission checks, transactions, outbox, logging)
+- Outbox pattern REQUIRED; OutboxMessages MUST include actor identity (user info)
+- Command-level permissions REQUIRED (predefined permissions checked inside pipeline before handler)
+- Auth: External OIDC provider (login/registration handled externally)
+- Local membership: ASP.NET Core Identity; auto-provision local user on first login
+- Roles assigned via admin UI; API derives permissions from roles (do NOT rely on token roles)
+- Database: PostgreSQL (EF Core)
+- Cache: Redis (store last known driver locations)
 - Realtime: SignalR (live tracking)
-- Frontends: Next.js (2 apps): customer app + admin/dispatcher app
-- Maps: OpenStreetMap (Leaflet or MapLibre)
-- Dev decoupling: Use APIRE during development (mock/replay/live modes)
-- Migrations: MUST be in a separate deployable tool (run BEFORE API deploy)
+- Frontends: Next.js apps (2): customer app + admin/dispatcher app (TypeScript + Tailwind)
+- Maps: OpenStreetMap via Leaflet or MapLibre
+- Dev decoupling: APIRE for mock/replay/live modes (frontends can develop without backend)
+- DB migrations: separate deployable tool “Migrator” to run BEFORE API deploy
+- Local orchestration: .NET Aspire AppHost for dev (Postgres, Redis, Migrator, API)
 
-IMPORTANT BUSINESS CONTEXT
+BUSINESS CONTEXT
 Passengers book with mostly fixed fares by zone and pay the driver directly (cash / MTN MoMo / Orange Money).
-The platform monetizes drivers via:
+Platform monetizes drivers via:
 - Per-ride fee (fee created when booking is Completed)
-- Daily pass (valid 24 hours rolling)
+- Daily pass (valid 24h rolling)
 - Monthly subscription (valid until configured expiry)
 
-MONOREPO STRUCTURE (MUST CREATE)
-Create a monorepo with:
+REPO STRUCTURE (MUST CREATE)
+Create a monorepo:
 
 /backend
   /src
@@ -36,11 +43,16 @@ Create a monorepo with:
       - Result/Error types
       - DomainEvent base
       - Clock abstraction
-      - CurrentUser abstraction
-      - Permission model + constants
+      - CurrentUser abstraction (reads token + local user)
+      - Permission model + constants + role->permission mapping
       - CQRS abstractions (ICommand<T>, IQuery<T>, handlers)
-      - Behaviors pipeline (ValidationBehavior, PermissionBehavior, TransactionBehavior, OutboxBehavior, LoggingBehavior)
-      - Outbox infrastructure contracts + serializer
+      - Behaviors pipeline:
+        ValidationBehavior
+        PermissionBehavior
+        TransactionBehavior
+        OutboxBehavior
+        LoggingBehavior
+      - Outbox contracts + serializer + dispatcher interfaces
     /Modules
       /Identity
         /Domain
@@ -74,68 +86,66 @@ Create a monorepo with:
         /Infrastructure
       /Notifications
         /UseCases
-        /Infrastructure (stubs only)
+        /Infrastructure (stubs only: SMS/WhatsApp/Telegram/Email)
     /Api
-      Program.cs
-      CompositionRoot (DI wiring)
-      Auth (OIDC/JWT validation + user auto-provisioning)
-      FastEndpoints setup + Swagger
-      SignalR hubs
-      Outbox dispatcher hosted service
+      Program.cs (FastEndpoints + Swagger + Auth + DI)
+      Hubs (SignalR hubs)
+      HostedServices (Outbox dispatcher)
   /tools
-    /Migrator
-      (Console app: apply migrations + seed idempotently)
+    /Migrator (Console app: apply migrations + seed)
+  /aspire
+    /AppHost (Aspire AppHost project)
+    /ServiceDefaults (Aspire defaults project)
   /tests
     /UnitTests
     /IntegrationTests
 
 /apps
-  /customer (Next.js, TS, Tailwind)
-  /admin    (Next.js, TS, Tailwind)
+  /customer (Next.js, TS, Tailwind, OIDC PKCE)
+  /admin    (Next.js, TS, Tailwind, OIDC PKCE)
 
 /packages
   /shared (TS types + API client)
 
 /infra
-  docker-compose.yml (postgres + redis)
+  docker-compose.yml (OPTIONAL fallback; Aspire is primary for dev)
 
-/apire
-  /specs/openapi.yaml
-  /mocks/*.json
-  README.md
+ /apire
+   /specs/openapi.yaml
+   /mocks/*.json
+   README.md
+   scripts for mock/replay/live
 
-Root README.md with exact setup, dev modes, and deployment order.
+Root README.md with setup, Aspire run commands, and deployment order:
+- Dev with Aspire
+- Prod deploy order: Migrator -> API -> apps
 
 MODULE STRUCTURE RULES (CRITICAL)
-Each module MUST follow:
+Each module MUST have:
 - Domain: aggregates, entities, value objects, domain events, invariants
-- UseCases: Commands/Queries + Handlers + Application Events (integration events) + DTOs + Validators
-- Web: FastEndpoints endpoints, request/response contracts, module route group registration, minimal web concerns only
-- Infrastructure: EF Core DbContext mappings, repositories, outbox table mapping, external providers
+- UseCases: Commands/Queries + Handlers + DTOs + Validators + internal event handlers
+- Web: FastEndpoints endpoints + request/response contracts only
+- Infrastructure: EF Core mapping, repositories, outbox mapping, external providers
 
-NO business logic in Web. Web calls UseCases.
+No business logic in Web.
 
 DDD + CQRS REQUIREMENTS
-- Aggregates enforce invariants.
 - Use Value Objects: PhoneNumber, Money, GeoPoint.
-- Commands mutate aggregates; Queries use projections.
-- Use optimistic concurrency (RowVersion) on aggregates.
-- Domain Events raised by aggregates; persisted via Outbox.
-- Use an Outbox pattern with:
-  - OutboxMessage table storing serialized events
-  - A background dispatcher reads pending messages and publishes them to an in-process event bus (MVP) and marks processed
-  - Outbox is written in the SAME transaction as command changes
+- Aggregate invariants enforced in Domain.
+- Commands mutate aggregates; Queries return read models via EF projections.
+- Optimistic concurrency (RowVersion) on aggregates.
+- Domain events raised by aggregates and persisted via outbox in same transaction.
 
-BEHAVIORS / PIPELINE REQUIREMENTS (CRITICAL)
-Implement a pipeline for UseCases (MediatR pipeline behaviors or custom pipeline):
-- ValidationBehavior: FluentValidation for commands/queries
-- PermissionBehavior: checks required permission(s) BEFORE handler executes
-- TransactionBehavior: wraps command handlers in a DB transaction (Unit of Work)
-- OutboxBehavior: collects domain events after successful command execution and writes outbox records
-- LoggingBehavior: structured logs
+BEHAVIORS / PIPELINE (CRITICAL)
+Implement a MediatR pipeline or custom pipeline:
+- ValidationBehavior uses FluentValidation
+- PermissionBehavior enforces predefined permissions for every command
+- TransactionBehavior ensures single DB transaction for a command
+- OutboxBehavior persists domain events to outbox (same transaction) including actor identity
+- LoggingBehavior logs command execution (structured)
 
-COMMAND-LEVEL PERMISSIONS (CRITICAL)
-Define predefined permissions as constants, e.g.:
+PERMISSIONS (CRITICAL)
+Define constants:
 - Permissions.Bookings.Create
 - Permissions.Bookings.Assign
 - Permissions.Bookings.ChangeStatus
@@ -149,120 +159,189 @@ Define predefined permissions as constants, e.g.:
 - Permissions.Audit.View
 
 Rules:
-- Every Command MUST declare required permissions (attribute or interface, e.g. IRequirePermission).
-- PermissionBehavior reads current user permissions and blocks if missing.
-- Map roles -> permissions in the API (configurable).
-- Admin UI assigns roles; permissions are derived from roles.
-- Do not rely on external token roles.
+- Every Command declares required permissions (e.g., IRequirePermissions { string[] Permissions }).
+- PermissionBehavior checks CurrentUser permissions.
+- Permissions are derived from LOCAL roles in DB (Identity roles), not token roles.
+- Admin UI assigns roles; role->permission mapping is in API config/code.
 
-AUTH + LOCAL MEMBERSHIP REQUIREMENTS
-- External OIDC for login (Next.js PKCE).
-- API validates JWT bearer via OIDC discovery.
-- Auto-provision Identity user on first authenticated request:
-  - Find by OIDC sub
-  - If missing, create local Identity user and mapping
-  - Save displayName/email/phone if present
-- Implement GET /api/me returning local roles + permissions + driver status.
+AUTH + LOCAL MEMBERSHIP (CRITICAL)
+- External OIDC provider:
+  - Next.js apps use Authorization Code + PKCE
+  - API validates JWT bearer via OIDC discovery
+- On first authenticated API request:
+  - If local user mapping by OIDC sub missing, create Identity user and mapping.
+  - Save displayName/email/phone if present.
+  - Idempotent.
+- GET /api/me returns: profile, roles, permissions, driver status, access validity.
 
-DB MIGRATIONS SEPARATE
+DB MIGRATIONS SEPARATE (CRITICAL)
 - API MUST NOT auto-migrate DB in production.
-- /backend/tools/Migrator applies migrations + seeds:
-  - zones/fare examples
-  - optional initial admin role (only if explicitly configured)
-- Provide CLI args.
+- /backend/tools/Migrator:
+  - Applies EF Core migrations + seeds (idempotent)
+  - CLI args: --connection "<conn>" --seed true
+- Seed at least:
+  - Sample zones + fares (FCFA)
+  - Minimal system configuration
 
-OUTBOX REQUIREMENT: INCLUDE USER IDENTITY (CRITICAL)
-OutboxMessages must include actor identity metadata for later processing/tracing.
-Implement OutboxMessage schema including:
+OUTBOX REQUIREMENT: INCLUDE ACTOR IDENTITY (CRITICAL)
+OutboxMessage schema MUST include:
 - Id (GUID)
 - OccurredAtUtc
-- Type (event type name)
-- Payload (serialized JSON)
-- Actor:
-  - ActorUserId (local Identity user id, if available)
-  - ActorOidcSub (OIDC subject)
-  - ActorDisplayName (optional)
-  - ActorRoles snapshot (optional)
+- Type
+- Payload (JSON)
+- ActorUserId (local Identity user id, if available)
+- ActorOidcSub (OIDC subject)
+- ActorDisplayName (optional)
+- ActorRolesSnapshot (optional)
 - CorrelationId / CausationId (optional but recommended)
 - ProcessedAtUtc (nullable)
 - Error (nullable)
 - RetryCount (int)
 
 Rules:
-- OutboxBehavior MUST attach the current actor identity to every OutboxMessage.
-- Current actor identity comes from CurrentUser abstraction (reads token claims + local user record).
-- Ensure actor identity is persisted in the same transaction as domain changes.
+- OutboxBehavior must attach actor identity from CurrentUser to every OutboxMessage.
+- Outbox records are written in same transaction as the command.
 
-FEATURES (MVP) — SAME AS PREVIOUS
-Customer booking, admin dashboard, driver workflow, pricing CRUD, wallet/access, tracking with OSM + SignalR, voice ingest endpoint.
+OUTBOX DISPATCHER (MVP)
+- Hosted background service in API:
+  - Polls DB for unprocessed outbox messages
+  - Deserializes payload
+  - Publishes to in-process event handlers (UseCases)
+  - Marks processed; retries with backoff, stores errors
 
-OUTBOX DISPATCHER (MVP IMPLEMENTATION DETAILS)
-- Hosted background service polls every N seconds:
-  - Reads unprocessed outbox rows in batches
-  - Deserializes event payload
-  - Publishes to in-process handlers (UseCases event handlers)
-  - Marks processed
-  - On failure: increments RetryCount and stores Error
-- Ensure idempotency: ProcessedAtUtc, RetryCount, and safe processing.
+FEATURES (MVP)
 
-API IMPLEMENTATION: FASTENDPOINTS
-- Each module /Web defines endpoints:
-  - Endpoints call UseCases via mediator/dispatcher.
-- Swagger with JWT auth support.
-- ProblemDetails-style error responses.
+Customer app:
+- Create booking (pickup Nsimalen + meeting point, dropoff zone, schedule time, passengers, phone required)
+- Show fixed fare and “pay driver directly”
+- View booking status
+- If assigned: live map tracking (OSM)
+
+Admin/Dispatcher app:
+- Dashboard (today’s bookings, unassigned, active drivers)
+- Manual assignment/reassignment
+- Drivers management (approve/suspend, set billing mode, activate daily pass, set monthly expiry)
+- Users/roles management (assign Admin/Dispatcher/Driver)
+- Pricing CRUD (zones/fare)
+- Fleet map (all online drivers)
+- Audit log view
+
+Driver UI (can be a section in admin app):
+- Profile
+- Online/Offline toggle
+- Accept/decline booking
+- Update booking status (Assigned -> Accepted -> OnTheWay -> PickedUp -> Completed/Cancelled)
+- Wallet/access view
+- Send location periodically
+
+Monetization rules:
+- BillingMode: PerRide | DailyPass | Monthly
+- DailyPass: validUntil = now + 24 hours rolling
+- Monthly: validUntil = configured date
+- PerRide: fee transaction created when booking completed
+- Enforcement: cannot accept new bookings if access expired OR wallet negative
+- Accepted bookings can be completed even if access expires mid-trip (default TRUE)
+
+Tracking rules:
+- Driver POST /api/drivers/me/location
+- Redis stores last known location
+- SignalR groups:
+  - booking:{bookingId} -> customer map
+  - admin:fleet -> fleet map
+
+Voice booking endpoint (for n8n):
+- POST /api/voice-bookings/ingest (transcript + extracted fields + confidence)
+- Create Draft booking if missing fields; else Created
+
+FASTENDPOINTS API (MUST)
+- Implement endpoints in each module’s /Web
+- Use FastEndpoints conventions; add Swagger auth
+- Use ProblemDetails-style error responses
 
 MINIMUM ENDPOINTS (MUST IMPLEMENT)
 - GET /api/me
-- Bookings: create/get/assign/change-status
-- Drivers: list/approve/suspend/billing-mode/access activate/set-monthly
-- Wallet: get me + admin record payment
-- Tracking: post location + get booking driver location + fleet locations
-- Pricing: CRUD zones + fares
-- Voice: ingest
-- Users: list + assign roles
-- Audit: list
+- POST /api/bookings
+- GET /api/bookings/{id}
+- POST /api/bookings/{id}/assign
+- POST /api/bookings/{id}/status
+- GET /api/drivers
+- POST /api/drivers/{id}/approve
+- POST /api/drivers/{id}/suspend
+- POST /api/drivers/{id}/billing-mode
+- POST /api/drivers/{id}/access/activate-daily
+- POST /api/drivers/{id}/access/set-monthly
+- GET /api/wallet/me
+- POST /api/wallet/{driverId}/payments (admin record payment)
+- POST /api/drivers/me/location
+- GET /api/bookings/{id}/driver-location
+- GET /api/drivers/locations
+- CRUD /api/zones
+- CRUD /api/fares
+- POST /api/voice-bookings/ingest
+- GET /api/admin/users
+- POST /api/admin/users/{userId}/roles
+- GET /api/audit
 
 APIRE DURING DEVELOPMENT (MUST)
-- /apire/specs/openapi.yaml is the contract source.
-- Provide mock JSON payloads and scripts for mock/replay/live.
-- Frontends must use NEXT_PUBLIC_API_BASE_URL, switchable between APIRE and backend.
-- Role mocking via header X-Mock-Role and/or mock token.
+- Create /apire/specs/openapi.yaml (MVP endpoints)
+- /apire/mocks/*.json realistic payloads
+- Scripts:
+  - dev:mock (APIR(E) serves mocks; apps point to it)
+  - dev:replay (APIR(E) proxies to API, records)
+  - dev:live (apps call API directly)
+- Role mocking via header X-Mock-Role to simulate Admin/Dispatcher/Driver/Customer.
+
+.NET ASPIRE (CRITICAL)
+Use .NET Aspire to orchestrate local dev:
+- Create AppHost that starts:
+  - Postgres container resource
+  - Redis container resource
+  - Migrator (runs once on startup or via a separate Aspire run profile)
+  - API service
+- Provide proper connection strings via Aspire configuration.
+- The Migrator must be runnable independently as well (for production pipelines).
+- Include /backend/aspire/ServiceDefaults project and use it.
+
+TESTS (CRITICAL)
+Unit tests REQUIRED (meaningful):
+- Booking status transition rules (domain)
+- Driver access enforcement rules (domain/use cases)
+- PermissionBehavior denies when missing permission
+- ValidationBehavior works
+- OutboxBehavior writes messages containing actor identity (ActorOidcSub/ActorUserId set)
+Integration tests:
+- booking -> assign -> accept -> complete -> fee created + outbox message with actor identity
+- location update stores in Redis
 
 FRONTENDS (Next.js)
-- Customer app: booking + status + tracking map
-- Admin app: dashboard, assign, manage drivers, manage users/roles, pricing CRUD, fleet map
-- Use shared TS client from /packages/shared (OpenAPI-generated or typed fetch)
-- OIDC PKCE; avoid localStorage if possible; use server-side session/cookies.
-
-INFRA
-- docker-compose postgres+redis
-- .env.example files
-
-TESTING REQUIREMENTS (CRITICAL)
-- Unit tests REQUIRED and must be meaningful.
-- Create unit tests for:
-  - Domain invariants (Booking transitions, Driver access enforcement)
-  - PermissionBehavior (denies commands without permission)
-  - ValidationBehavior (reject invalid inputs)
-  - Outbox writing includes actor identity (assert ActorOidcSub/ActorUserId set)
-- Integration tests for main flows:
-  - booking -> assign -> accept -> complete -> fee created and outbox has actor identity
-  - location update -> redis updated
+- Implement OIDC PKCE login for both apps (admin required; customer optional feature flag)
+- Use env vars:
+  NEXT_PUBLIC_OIDC_ISSUER
+  NEXT_PUBLIC_OIDC_CLIENT_ID
+  NEXT_PUBLIC_OIDC_REDIRECT_URI
+  NEXT_PUBLIC_API_BASE_URL
+- Use shared TS client in /packages/shared
+- Customer: booking flow + map tracking
+- Admin: dashboard + management UIs + fleet map
+- Leaflet OSM map with markers and last-updated timestamps
 
 OUTPUT FORMAT (IMPORTANT)
 - Print repo tree first.
-- Output EVERY file with full path and full content.
-- Provide README with exact commands for:
-  - docker-compose up
-  - migrator
-  - api
-  - apps
-  - apire modes
-- Code must compile and run. No hardcoded secrets.
+- Output EVERY file with full path + full content.
+- Provide README with exact commands:
+  - dotnet run --project backend/aspire/AppHost
+  - how to run migrator alone
+  - how to run API alone
+  - how to run apps
+  - how to run APIRE mock/replay/live
+- Code must compile and run.
+- No hardcoded secrets; provide .env.example.
 
 QUALITY BAR
-- Web layer thin, UseCases contain orchestration, Domain contains invariants.
+- Web thin, UseCases orchestrate, Domain enforces invariants.
 - Behaviors enforce validation/permissions/transactions/outbox consistently.
-- Outbox messages always contain actor identity metadata.
-- Prefer correctness and completeness.
+- Outbox always contains actor identity metadata.
+- Prefer correctness and completeness over brevity.
 ```
+
+If you want one more improvement for Codex success rate: tell it which **Aspire PostgreSQL + Redis packages** to use (or let it choose), and whether you want **EF Core migrations per module** (separate DbContexts) or a single “AppDbContext” with module configurations.
