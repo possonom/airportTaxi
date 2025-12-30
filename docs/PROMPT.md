@@ -1,11 +1,9 @@
-# PROMPT
+Understood — **drop APIRE بالكامل**. You meant **.NET Aspire** for the dev experience (orchestration, service discovery, env wiring), not API mocking/replay.
 
-Got it — **.NET Aspire**. Here’s the **complete Codex prompt** updated to use **.NET 10 + FastEndpoints + DDD/CQRS + Outbox + Behaviors + Permissions**, with **migrations as a separate tool**, **two Next.js clients**, **APIR(E)** dev modes, and **a .NET Aspire AppHost** for local orchestration (Postgres, Redis, API, Migrator). It also preserves your rule that DB can be updated **before** backend deploy (Migrator is separate), while Aspire is used for dev orchestration.
-
-Copy/paste:
+Here is the **complete prompt** rewritten with **.NET Aspire (required)** and **no APIRE**.
 
 ```text
-You are a senior software architect + implementer.
+You are Codex acting as a senior software architect + implementer.
 
 BUILD A COMPLETE RUNNABLE MONOREPO for an “Airport Taxi” platform (Africa; starting with Nsimalen International Airport, Yaoundé) with:
 
@@ -14,7 +12,7 @@ BUILD A COMPLETE RUNNABLE MONOREPO for an “Airport Taxi” platform (Africa; s
 - Per module folder structure: /Domain, /UseCases, /Web, /Infrastructure
 - Cross-cutting pipeline Behaviors (validation, permission checks, transactions, outbox, logging)
 - Outbox pattern REQUIRED; OutboxMessages MUST include actor identity (user info)
-- Command-level permissions REQUIRED (predefined permissions checked inside pipeline before handler)
+- Command-level permissions REQUIRED (predefined permissions checked at command level via pipeline behavior)
 - Auth: External OIDC provider (login/registration handled externally)
 - Local membership: ASP.NET Core Identity; auto-provision local user on first login
 - Roles assigned via admin UI; API derives permissions from roles (do NOT rely on token roles)
@@ -23,19 +21,18 @@ BUILD A COMPLETE RUNNABLE MONOREPO for an “Airport Taxi” platform (Africa; s
 - Realtime: SignalR (live tracking)
 - Frontends: Next.js apps (2): customer app + admin/dispatcher app (TypeScript + Tailwind)
 - Maps: OpenStreetMap via Leaflet or MapLibre
-- Dev decoupling: APIRE for mock/replay/live modes (frontends can develop without backend)
 - DB migrations: separate deployable tool “Migrator” to run BEFORE API deploy
-- Local orchestration: .NET Aspire AppHost for dev (Postgres, Redis, Migrator, API)
+- Dev orchestration: .NET Aspire AppHost (required) for local dev, wiring Postgres, Redis, Migrator, API
 
-BUSINESS CONTEXT
+IMPORTANT BUSINESS CONTEXT
 Passengers book with mostly fixed fares by zone and pay the driver directly (cash / MTN MoMo / Orange Money).
 Platform monetizes drivers via:
 - Per-ride fee (fee created when booking is Completed)
 - Daily pass (valid 24h rolling)
 - Monthly subscription (valid until configured expiry)
 
-REPO STRUCTURE (MUST CREATE)
-Create a monorepo:
+MONOREPO STRUCTURE (MUST CREATE)
+Create a monorepo with:
 
 /backend
   /src
@@ -92,7 +89,7 @@ Create a monorepo:
       Hubs (SignalR hubs)
       HostedServices (Outbox dispatcher)
   /tools
-    /Migrator (Console app: apply migrations + seed)
+    /Migrator (Console app: apply migrations + seed idempotently)
   /aspire
     /AppHost (Aspire AppHost project)
     /ServiceDefaults (Aspire defaults project)
@@ -110,15 +107,10 @@ Create a monorepo:
 /infra
   docker-compose.yml (OPTIONAL fallback; Aspire is primary for dev)
 
- /apire
-   /specs/openapi.yaml
-   /mocks/*.json
-   README.md
-   scripts for mock/replay/live
-
-Root README.md with setup, Aspire run commands, and deployment order:
-- Dev with Aspire
-- Prod deploy order: Migrator -> API -> apps
+Root README.md with:
+- Dev run using Aspire
+- Production deploy order: Migrator -> API -> apps
+- Env var examples for OIDC and API URLs
 
 MODULE STRUCTURE RULES (CRITICAL)
 Each module MUST have:
@@ -137,10 +129,10 @@ DDD + CQRS REQUIREMENTS
 - Domain events raised by aggregates and persisted via outbox in same transaction.
 
 BEHAVIORS / PIPELINE (CRITICAL)
-Implement a MediatR pipeline or custom pipeline:
+Implement a pipeline for UseCases (MediatR pipeline behaviors or custom pipeline):
 - ValidationBehavior uses FluentValidation
 - PermissionBehavior enforces predefined permissions for every command
-- TransactionBehavior ensures single DB transaction for a command
+- TransactionBehavior ensures a single DB transaction for a command
 - OutboxBehavior persists domain events to outbox (same transaction) including actor identity
 - LoggingBehavior logs command execution (structured)
 
@@ -160,9 +152,8 @@ Define constants:
 
 Rules:
 - Every Command declares required permissions (e.g., IRequirePermissions { string[] Permissions }).
-- PermissionBehavior checks CurrentUser permissions.
-- Permissions are derived from LOCAL roles in DB (Identity roles), not token roles.
-- Admin UI assigns roles; role->permission mapping is in API config/code.
+- PermissionBehavior checks CurrentUser permissions (derived from LOCAL roles in DB).
+- Do not rely on external token roles.
 
 AUTH + LOCAL MEMBERSHIP (CRITICAL)
 - External OIDC provider:
@@ -271,7 +262,7 @@ MINIMUM ENDPOINTS (MUST IMPLEMENT)
 - POST /api/drivers/{id}/access/activate-daily
 - POST /api/drivers/{id}/access/set-monthly
 - GET /api/wallet/me
-- POST /api/wallet/{driverId}/payments (admin record payment)
+- POST /api/wallet/{driverId}/payments (admin records payment)
 - POST /api/drivers/me/location
 - GET /api/bookings/{id}/driver-location
 - GET /api/drivers/locations
@@ -282,36 +273,18 @@ MINIMUM ENDPOINTS (MUST IMPLEMENT)
 - POST /api/admin/users/{userId}/roles
 - GET /api/audit
 
-APIRE DURING DEVELOPMENT (MUST)
-- Create /apire/specs/openapi.yaml (MVP endpoints)
-- /apire/mocks/*.json realistic payloads
-- Scripts:
-  - dev:mock (APIR(E) serves mocks; apps point to it)
-  - dev:replay (APIR(E) proxies to API, records)
-  - dev:live (apps call API directly)
-- Role mocking via header X-Mock-Role to simulate Admin/Dispatcher/Driver/Customer.
-
-.NET ASPIRE (CRITICAL)
-Use .NET Aspire to orchestrate local dev:
+.NET ASPIRE (REQUIRED)
+Use .NET Aspire to orchestrate local development:
 - Create AppHost that starts:
   - Postgres container resource
   - Redis container resource
-  - Migrator (runs once on startup or via a separate Aspire run profile)
+  - Migrator (runs once on startup OR via a separate Aspire profile; must be possible to run independently too)
   - API service
-- Provide proper connection strings via Aspire configuration.
-- The Migrator must be runnable independently as well (for production pipelines).
-- Include /backend/aspire/ServiceDefaults project and use it.
-
-TESTS (CRITICAL)
-Unit tests REQUIRED (meaningful):
-- Booking status transition rules (domain)
-- Driver access enforcement rules (domain/use cases)
-- PermissionBehavior denies when missing permission
-- ValidationBehavior works
-- OutboxBehavior writes messages containing actor identity (ActorOidcSub/ActorUserId set)
-Integration tests:
-- booking -> assign -> accept -> complete -> fee created + outbox message with actor identity
-- location update stores in Redis
+- Provide connection strings and env vars via Aspire configuration binding.
+- Include /backend/aspire/ServiceDefaults project and apply it to API + Migrator.
+- Provide run instructions in README:
+  - dotnet run --project backend/aspire/AppHost
+  - and how to run Migrator alone for production pipelines
 
 FRONTENDS (Next.js)
 - Implement OIDC PKCE login for both apps (admin required; customer optional feature flag)
@@ -325,6 +298,17 @@ FRONTENDS (Next.js)
 - Admin: dashboard + management UIs + fleet map
 - Leaflet OSM map with markers and last-updated timestamps
 
+TESTS (CRITICAL)
+Unit tests REQUIRED (meaningful):
+- Booking status transition rules (domain)
+- Driver access enforcement rules (domain/use cases)
+- PermissionBehavior denies when missing permission
+- ValidationBehavior works
+- OutboxBehavior writes messages containing actor identity (ActorOidcSub/ActorUserId set)
+Integration tests:
+- booking -> assign -> accept -> complete -> fee created + outbox message with actor identity
+- location update stores in Redis
+
 OUTPUT FORMAT (IMPORTANT)
 - Print repo tree first.
 - Output EVERY file with full path + full content.
@@ -333,7 +317,6 @@ OUTPUT FORMAT (IMPORTANT)
   - how to run migrator alone
   - how to run API alone
   - how to run apps
-  - how to run APIRE mock/replay/live
 - Code must compile and run.
 - No hardcoded secrets; provide .env.example.
 
@@ -344,4 +327,4 @@ QUALITY BAR
 - Prefer correctness and completeness over brevity.
 ```
 
-If you want one more improvement for Codex success rate: tell it which **Aspire PostgreSQL + Redis packages** to use (or let it choose), and whether you want **EF Core migrations per module** (separate DbContexts) or a single “AppDbContext” with module configurations.
+If you want, I can also add an explicit requirement that **Aspire wires the Next.js apps too** (as external endpoints) — or keep Aspire only for backend services (Postgres/Redis/API/Migrator), which is the most common pattern.
